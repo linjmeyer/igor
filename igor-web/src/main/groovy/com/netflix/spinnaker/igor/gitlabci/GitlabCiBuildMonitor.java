@@ -131,7 +131,8 @@ public class GitlabCiBuildMonitor
                 // GitLab CI pipelineIds increment; Determine if it is new using the ID
                 if (pipeline.getId() > cachedBuildId) {
                   updatedBuilds.incrementAndGet();
-                  delta.add(new BuildDelta(pipelineIdCacheKey, project, pipeline, false));
+                  boolean isPipelineRunning = GitlabCiResultConverter.running(pipeline.getStatus());
+                  delta.add(new BuildDelta(pipelineIdCacheKey, project, pipeline, isPipelineRunning));
                 }
               }
             });
