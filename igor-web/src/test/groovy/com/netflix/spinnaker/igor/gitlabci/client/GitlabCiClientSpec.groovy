@@ -19,7 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.netflix.spinnaker.igor.config.GitlabCiConfig
 import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline
 import com.netflix.spinnaker.igor.gitlabci.client.model.PipelineStatus
-import com.netflix.spinnaker.igor.gitlabci.client.model.PipelineSummary
 import com.netflix.spinnaker.igor.gitlabci.client.model.Project
 import com.squareup.okhttp.mockwebserver.MockResponse
 import com.squareup.okhttp.mockwebserver.MockWebServer
@@ -59,12 +58,12 @@ class GitlabCiClientSpec extends Specification {
         projects[1].pathWithNamespace == 'user1/project2'
     }
 
-    def "get pipeline summaries"() {
+    def "get pipelines"() {
         given:
         setResponse GitlabApiCannedResponses.PIPELINE_SUMMARIES
 
         when:
-        List<PipelineSummary> pipelineSummaries = client.getPipelineSummaries(3057147, 3)
+        List<Pipeline> pipelineSummaries = client.getPipelineSummaries(3057147, 3)
 
         then:
         pipelineSummaries.size() == 3

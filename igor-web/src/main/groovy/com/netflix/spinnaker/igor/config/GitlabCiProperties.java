@@ -23,7 +23,7 @@ import org.hibernate.validator.constraints.NotEmpty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-@ConfigurationProperties(prefix = "gitlab-ci")
+@ConfigurationProperties(prefix = "gitlabci")
 @Validated
 public class GitlabCiProperties implements BuildServerProperties<GitlabCiProperties.GitlabCiHost> {
   private int cachedJobTTLDays = 60;
@@ -52,7 +52,7 @@ public class GitlabCiProperties implements BuildServerProperties<GitlabCiPropert
     private String privateToken;
     private boolean limitByMembership = false;
     private boolean limitByOwnership = true;
-    private Integer itemUpperThreshold;
+    private Integer itemUpperThreshold = 1000;
     private Permissions.Builder permissions = new Permissions.Builder();
 
     public String getName() {

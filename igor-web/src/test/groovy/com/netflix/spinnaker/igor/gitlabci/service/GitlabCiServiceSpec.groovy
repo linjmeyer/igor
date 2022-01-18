@@ -18,7 +18,6 @@ package com.netflix.spinnaker.igor.gitlabci.service
 import com.netflix.spinnaker.fiat.model.resources.Permissions
 import com.netflix.spinnaker.igor.gitlabci.client.GitlabCiClient
 import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline
-import com.netflix.spinnaker.igor.gitlabci.client.model.PipelineSummary
 import com.netflix.spinnaker.igor.gitlabci.client.model.Project
 import spock.lang.Shared
 import spock.lang.Specification
@@ -64,8 +63,8 @@ class GitlabCiServiceSpec extends Specification {
         final int PIPELINE_2_ID = 7
 
         Project project = new Project(id: PROJECT_ID)
-        PipelineSummary ps1 = new PipelineSummary(id: PIPELINE_1_ID)
-        PipelineSummary ps2 = new PipelineSummary(id: PIPELINE_2_ID)
+        Pipeline ps1 = new Pipeline(id: PIPELINE_1_ID)
+        Pipeline ps2 = new Pipeline(id: PIPELINE_2_ID)
 
         when:
         List<Pipeline> pipelines = service.getPipelines(project, PAGE_SIZE)

@@ -23,8 +23,9 @@ import com.netflix.spinnaker.igor.build.BuildCache;
 import com.netflix.spinnaker.igor.build.model.GenericProject;
 import com.netflix.spinnaker.igor.config.GitlabCiProperties;
 import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline;
+import com.netflix.spinnaker.igor.gitlabci.client.model.PipelineStatus;
 import com.netflix.spinnaker.igor.gitlabci.client.model.Project;
-import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiPipelineUtis;
+import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiPipelineUtils;
 import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiResultConverter;
 import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiService;
 import com.netflix.spinnaker.igor.history.EchoService;
@@ -53,7 +54,7 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnProperty("gitlab-ci.enabled")
+@ConditionalOnProperty("gitlabci.enabled")
 public class GitlabCiBuildMonitor
     extends CommonPollingMonitor<
         GitlabCiBuildMonitor.BuildDelta, GitlabCiBuildMonitor.BuildPollingDelta> {
@@ -121,17 +122,16 @@ public class GitlabCiBuildMonitor
                   filterOldPipelines(
                       gitlabCiService.getPipelines(project, MAX_NUMBER_OF_PIPELINES));
               for (Pipeline pipeline : pipelines) {
-                String branchedRepoSlug =
-                    GitlabCiPipelineUtis.getBranchedPipelineSlug(project, pipeline);
-
-                boolean isPipelineRunning = GitlabCiResultConverter.running(pipeline.getStatus());
-                int cachedBuildId =
-                    buildCache.getLastBuild(master, branchedRepoSlug, isPipelineRunning);
-                // In case of Gitlab CI the pipeline ids are increasing so we can use it for
-                // ordering
+                if (pipeline.getStatus() != PipelineStatus.success) {
+                  // Ignore pipelines that are running, pending, failed, etc.
+                  continue;
+                }
+                String pipelineIdCacheKey = String.valueOf(project.getId());
+                int cachedBuildId = buildCache.getLastBuild(master, pipelineIdCacheKey, false);
+                // GitLab CI pipelineIds increment; Determine if it is new using the ID
                 if (pipeline.getId() > cachedBuildId) {
                   updatedBuilds.incrementAndGet();
-                  delta.add(new BuildDelta(branchedRepoSlug, project, pipeline, isPipelineRunning));
+                  delta.add(new BuildDelta(pipelineIdCacheKey, project, pipeline, false));
                 }
               }
             });
@@ -152,42 +152,39 @@ public class GitlabCiBuildMonitor
     final GitlabCiService gitlabCiService =
         (GitlabCiService) buildServices.getService(delta.master);
 
+    log.info(
+      "Last poll took {} ms (master: {})",
+      System.currentTimeMillis() - delta.startTime,
+      kv("master", delta.master));
+
+    if (delta.items.isEmpty()) {
+      return;
+    }
+
     delta.items.parallelStream()
         .forEach(
             item -> {
               log.info(
-                  "Build update [{}:{}:{}] [status:{}] [running:{}]",
+                  "Build update [{}:{}:{}] [status:{}]",
                   kv("master", delta.master),
-                  item.branchedRepoSlug,
+                  item.cacheKey,
                   item.pipeline.getId(),
-                  item.pipeline.getStatus(),
-                  item.pipelineRunning);
+                  item.pipeline.getStatus());
               buildCache.setLastBuild(
                   delta.master,
-                  item.branchedRepoSlug,
+                  item.cacheKey,
                   item.pipeline.getId(),
-                  item.pipelineRunning,
-                  ttl);
-              buildCache.setLastBuild(
-                  delta.master,
-                  item.project.getPathWithNamespace(),
-                  item.pipeline.getId(),
-                  item.pipelineRunning,
+                  false,
                   ttl);
               if (sendEvents) {
                 sendEventForPipeline(
                     item.project,
                     item.pipeline,
                     gitlabCiService.getAddress(),
-                    item.branchedRepoSlug,
+                    item.cacheKey,
                     delta.master);
               }
             });
-
-    log.info(
-        "Last poll took {} ms (master: {})",
-        System.currentTimeMillis() - delta.startTime,
-        kv("master", delta.master));
   }
 
   private List<Pipeline> filterOldPipelines(List<Pipeline> pipelines) {
@@ -234,11 +231,11 @@ public class GitlabCiBuildMonitor
     GenericProject genericProject =
         new GenericProject(
             slug,
-            GitlabCiPipelineUtis.genericBuild(pipeline, project.getPathWithNamespace(), address));
+            GitlabCiPipelineUtils.genericBuild(pipeline, project.getPathWithNamespace(), address));
 
     GenericBuildContent content = new GenericBuildContent();
     content.setMaster(master);
-    content.setType("gitlab-ci");
+    content.setType("gitlabci");
     content.setProject(genericProject);
 
     GenericBuildEvent event = new GenericBuildEvent();
@@ -253,6 +250,7 @@ public class GitlabCiBuildMonitor
         return host.getItemUpperThreshold();
       }
     }
+    log.warn("Failed to find upper threshold for GitLabCI partition {}", partition);
     return null;
   }
 
@@ -274,17 +272,15 @@ public class GitlabCiBuildMonitor
   }
 
   static class BuildDelta implements DeltaItem {
-    private final String branchedRepoSlug;
+    private final String cacheKey;
     private final Project project;
     private final Pipeline pipeline;
-    private final boolean pipelineRunning;
 
     public BuildDelta(
-        String branchedRepoSlug, Project project, Pipeline pipeline, boolean pipelineRunning) {
-      this.branchedRepoSlug = branchedRepoSlug;
+        String cacheKey, Project project, Pipeline pipeline, boolean pipelineRunning) {
+      this.cacheKey = cacheKey;
       this.project = project;
       this.pipeline = pipeline;
-      this.pipelineRunning = pipelineRunning;
     }
   }
 }

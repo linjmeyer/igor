@@ -21,7 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class GitlabCiResultConverter {
-  private static Logger log = LoggerFactory.getLogger(GitlabCiPipelineUtis.class);
+  private static Logger log = LoggerFactory.getLogger(GitlabCiPipelineUtils.class);
 
   public static Result getResultFromGitlabCiState(final PipelineStatus state) {
     switch (state) {
