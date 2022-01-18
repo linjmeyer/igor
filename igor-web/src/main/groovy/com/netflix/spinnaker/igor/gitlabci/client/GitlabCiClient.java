@@ -16,7 +16,6 @@
 package com.netflix.spinnaker.igor.gitlabci.client;
 
 import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline;
-import com.netflix.spinnaker.igor.gitlabci.client.model.PipelineSummary;
 import com.netflix.spinnaker.igor.gitlabci.client.model.Project;
 import java.util.List;
 import retrofit.http.GET;
@@ -30,11 +29,12 @@ public interface GitlabCiClient {
   List<Project> getProjects(
       @Query("membership") boolean limitByMembership,
       @Query("owned") boolean limitByOwnership,
-      @Query("page") int page);
+      @Query("page") int page,
+      @Query("per_page") int pageLimit);
 
   @GET("/api/v4/projects/{projectId}/pipelines")
-  List<PipelineSummary> getPipelineSummaries(
-      @Path("projectId") int projectId, @Query("per_page") int pageLimit);
+  List<Pipeline> getPipelineSummaries(
+      @Path("projectId") String projectId, @Query("per_page") int pageLimit);
 
   @GET("/api/v4/projects/{projectId}/pipelines/{pipelineId}")
   Pipeline getPipeline(@Path("projectId") int projectId, @Path("pipelineId") long pipelineId);

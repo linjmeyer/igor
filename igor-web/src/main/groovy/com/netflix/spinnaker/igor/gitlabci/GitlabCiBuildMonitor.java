@@ -106,8 +106,9 @@ public class GitlabCiBuildMonitor
     long startTime = System.currentTimeMillis();
 
     final List<Project> projects = gitlabCiService.getProjects();
+
     log.info(
-        "Took {} ms to retrieve {} repositories (master: {})",
+        "Took {} ms to retrieve {} repositories with CI enabled (master: {})",
         System.currentTimeMillis() - startTime,
         projects.size(),
         kv("master", master));
@@ -136,7 +137,10 @@ public class GitlabCiBuildMonitor
             });
 
     if (!delta.isEmpty()) {
-      log.info("Found {} new builds (master: {})", updatedBuilds.get(), kv("master", master));
+      log.info("Found {} new builds in {} milliseconds (master: {})",
+        updatedBuilds.get(),
+        System.currentTimeMillis() - startTime,
+        kv("master", master));
     }
 
     return new BuildPollingDelta(delta, master, startTime);
@@ -192,8 +196,8 @@ public class GitlabCiBuildMonitor
     return pipelines.stream()
         .filter(
             pipeline ->
-                (pipeline.getFinishedAt() != null)
-                    && (pipeline.getFinishedAt().getTime() > threshold))
+                (pipeline.getCreatedAt() != null)
+                    && (pipeline.getCreatedAt().getTime() > threshold))
         .collect(Collectors.toList());
   }
 

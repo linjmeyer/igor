@@ -21,10 +21,12 @@ import com.netflix.spinnaker.igor.build.model.GenericGitRevision;
 import com.netflix.spinnaker.igor.build.model.JobConfiguration;
 import com.netflix.spinnaker.igor.gitlabci.client.GitlabCiClient;
 import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline;
-import com.netflix.spinnaker.igor.gitlabci.client.model.PipelineSummary;
 import com.netflix.spinnaker.igor.gitlabci.client.model.Project;
 import com.netflix.spinnaker.igor.model.BuildServiceProvider;
 import com.netflix.spinnaker.igor.service.BuildOperations;
+import com.netflix.spinnaker.security.AuthenticatedRequest;
+import org.springframework.web.client.HttpClientErrorException;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -74,8 +76,8 @@ public class GitlabCiService implements BuildOperations {
   }
 
   @Override
-  public List<GenericBuild> getBuilds(String job) {
-    throw new UnsupportedOperationException();
+  public List<Pipeline> getBuilds(String job) {
+    return this.client.getPipelineSummaries(job, 25);
   }
 
   @Override
@@ -94,37 +96,38 @@ public class GitlabCiService implements BuildOperations {
   }
 
   public List<Project> getProjects() {
-    return getProjectsRec(new ArrayList<>(), 1);
+    return getProjectsRec(new ArrayList<>(), 1, 100)
+      .parallelStream()
+      // Ignore projects that don't have Gitlab CI enabled.  It is not possible to filter this using the GitLab
+      // API. We need to filter it after retrieving all projects
+      .filter(project -> project.getBuildsAccessLevel().equals("enabled")).collect(Collectors.toList());
   }
 
   public List<Pipeline> getPipelines(final Project project, int limit) {
     isValidPageSize(limit);
 
-    List<PipelineSummary> pipelineSummaries = client.getPipelineSummaries(project.getId(), limit);
-
-    return pipelineSummaries.stream()
-        .map((PipelineSummary ps) -> client.getPipeline(project.getId(), ps.getId()))
-        .collect(Collectors.toList());
+    return client.getPipelineSummaries(String.valueOf(project.getId()), limit);
   }
 
   public String getAddress() {
     return address;
   }
 
-  private List<Project> getProjectsRec(List<Project> projects, int page) {
-    List<Project> slice = client.getProjects(limitByMembership, limitByOwnership, page);
+  private List<Project> getProjectsRec(List<Project> projects, int page, int pageSize) {
+    isValidPageSize(pageSize);
+    List<Project> slice = client.getProjects(limitByMembership, limitByOwnership, page, pageSize);
     if (slice.isEmpty()) {
       return projects;
     } else {
       projects.addAll(slice);
-      return getProjectsRec(projects, page + 1);
+      return getProjectsRec(projects, page + 1, pageSize);
     }
   }
 
   private static void isValidPageSize(int perPage) {
     if (perPage > GitlabCiClient.MAX_PAGE_SIZE) {
       throw new IllegalArgumentException(
-          "Gitlab API call page size should be less than "
+          "Gitlab API call page size should be no more than "
               + GitlabCiClient.MAX_PAGE_SIZE
               + " but was "
               + perPage);

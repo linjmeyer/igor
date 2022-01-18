@@ -25,6 +25,9 @@ public class Project {
   @JsonProperty("path_with_namespace")
   private String pathWithNamespace;
 
+  @JsonProperty("builds_access_level")
+  private String buildsAccessLevel;
+
   public int getId() {
     return id;
   }
@@ -33,9 +36,10 @@ public class Project {
     this.id = id;
   }
 
-  public String getPathWithNamespace() {
-    return pathWithNamespace;
-  }
+  public void setBuildsAccessLevel(String buildsAccessLevel) { this.buildsAccessLevel = buildsAccessLevel; }
+  public String getBuildsAccessLevel() { return this.buildsAccessLevel; }
+
+  public String getPathWithNamespace() { return pathWithNamespace; }
 
   public void setPathWithNamespace(String pathWithNamespace) {
     this.pathWithNamespace = pathWithNamespace;

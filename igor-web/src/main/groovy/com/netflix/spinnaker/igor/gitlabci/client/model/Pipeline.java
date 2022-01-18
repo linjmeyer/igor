@@ -28,8 +28,16 @@ public class Pipeline {
   private boolean tag;
   private int duration;
 
-  @JsonProperty("finished_at")
-  private Date finishedAt;
+  @JsonProperty("created_at")
+  private Date createdAt;
+
+  public Date getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setCreatedAt(Date createdAt) {
+    this.createdAt = createdAt;
+  }
 
   public int getId() {
     return id;
@@ -63,31 +71,31 @@ public class Pipeline {
     this.status = status;
   }
 
-  public boolean getTag() {
-    return tag;
-  }
+//  public boolean getTag() {
+//    return tag;
+//  }
 
-  public boolean isTag() {
-    return tag;
-  }
+//  public boolean isTag() {
+//    return tag;
+//  }
 
-  public void setTag(boolean tag) {
-    this.tag = tag;
-  }
+//  public void setTag(boolean tag) {
+//    this.tag = tag;
+//  }
 
-  public int getDuration() {
-    return duration;
-  }
+//  public int getDuration() {
+//    return duration;
+//  }
 
-  public void setDuration(int duration) {
-    this.duration = duration;
-  }
-
-  public Date getFinishedAt() {
-    return finishedAt;
-  }
-
-  public void setFinishedAt(Date finishedAt) {
-    this.finishedAt = finishedAt;
-  }
+//  public void setDuration(int duration) {
+//    this.duration = duration;
+//  }
+//
+//  public Date getFinishedAt() {
+//    return finishedAt;
+//  }
+//
+//  public void setFinishedAt(Date finishedAt) {
+//    this.finishedAt = finishedAt;
+//  }
 }
