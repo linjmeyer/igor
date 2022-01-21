@@ -1,5 +1,6 @@
 /*
  * Copyright 2017 Netflix, Inc.
+ * Copyright 2022 Redbox Entertainment, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +18,10 @@ package com.netflix.spinnaker.igor.gitlabci.client.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.netflix.spinnaker.igor.build.model.GenericBuild;
+import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiResultConverter;
+import com.netflix.spinnaker.igor.travis.client.model.v3.TravisBuildState;
+
 import java.util.Date;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -71,31 +76,14 @@ public class Pipeline {
     this.status = status;
   }
 
-//  public boolean getTag() {
-//    return tag;
-//  }
-
-//  public boolean isTag() {
-//    return tag;
-//  }
-
-//  public void setTag(boolean tag) {
-//    this.tag = tag;
-//  }
-
-//  public int getDuration() {
-//    return duration;
-//  }
-
-//  public void setDuration(int duration) {
-//    this.duration = duration;
-//  }
-//
-//  public Date getFinishedAt() {
-//    return finishedAt;
-//  }
-//
-//  public void setFinishedAt(Date finishedAt) {
-//    this.finishedAt = finishedAt;
-//  }
+  public GenericBuild toGenericBuild() {
+    //ToDo: Add additional properties
+    GenericBuild genericBuild = new GenericBuild();
+    genericBuild.setBuilding(GitlabCiResultConverter.running(this.getStatus()));
+    genericBuild.setNumber(this.getId());
+    genericBuild.setResult(GitlabCiResultConverter.getResultFromGitlabCiState(this.getStatus()));
+    genericBuild.setName(String.valueOf(this.getId()));
+    genericBuild.setId(String.valueOf(this.getId()));
+    return genericBuild;
+  }
 }
