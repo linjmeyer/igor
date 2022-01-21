@@ -50,8 +50,8 @@ public class GitlabCiProperties implements BuildServerProperties<GitlabCiPropert
     @NotEmpty private String name;
     @NotEmpty private String address;
     private String privateToken;
-    private boolean limitByMembership = false;
-    private boolean limitByOwnership = true;
+    private boolean limitByMembership = true;
+    private boolean limitByOwnership = false;
     private Integer itemUpperThreshold = 1000;
     private Permissions.Builder permissions = new Permissions.Builder();
 
