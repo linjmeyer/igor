@@ -17,7 +17,6 @@
 package com.netflix.spinnaker.igor.gitlabci.client.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
 import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)

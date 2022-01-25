@@ -18,9 +18,8 @@ package com.netflix.spinnaker.igor.gitlabci;
 
 import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline;
 import com.netflix.spinnaker.igor.gitlabci.client.model.Project;
-import lombok.Getter;
-
 import java.util.List;
+import lombok.Getter;
 
 @Getter
 public class ProjectWithPipeline {

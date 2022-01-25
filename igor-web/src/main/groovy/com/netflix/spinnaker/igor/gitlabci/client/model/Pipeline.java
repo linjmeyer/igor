@@ -20,8 +20,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.netflix.spinnaker.igor.build.model.GenericBuild;
 import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiResultConverter;
-import com.netflix.spinnaker.igor.travis.client.model.v3.TravisBuildState;
-
 import java.util.Date;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -77,7 +75,7 @@ public class Pipeline {
   }
 
   public GenericBuild toGenericBuild() {
-    //ToDo: Add additional properties
+    // ToDo: Add additional properties
     GenericBuild genericBuild = new GenericBuild();
     genericBuild.setBuilding(GitlabCiResultConverter.running(this.getStatus()));
     genericBuild.setNumber(this.getId());

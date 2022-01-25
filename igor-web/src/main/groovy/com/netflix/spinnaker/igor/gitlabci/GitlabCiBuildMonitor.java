@@ -133,16 +133,18 @@ public class GitlabCiBuildMonitor
                 if (pipeline.getId() > cachedBuildId) {
                   updatedBuilds.incrementAndGet();
                   boolean isPipelineRunning = GitlabCiResultConverter.running(pipeline.getStatus());
-                  delta.add(new BuildDelta(pipelineIdCacheKey, project, pipeline, isPipelineRunning));
+                  delta.add(
+                      new BuildDelta(pipelineIdCacheKey, project, pipeline, isPipelineRunning));
                 }
               }
             });
 
     if (!delta.isEmpty()) {
-      log.info("Found {} new builds in {} milliseconds (master: {})",
-        updatedBuilds.get(),
-        System.currentTimeMillis() - startTime,
-        kv("master", master));
+      log.info(
+          "Found {} new builds in {} milliseconds (master: {})",
+          updatedBuilds.get(),
+          System.currentTimeMillis() - startTime,
+          kv("master", master));
     }
 
     return new BuildPollingDelta(delta, master, startTime);
@@ -155,9 +157,9 @@ public class GitlabCiBuildMonitor
         (GitlabCiService) buildServices.getService(delta.master);
 
     log.info(
-      "Last poll took {} ms (master: {})",
-      System.currentTimeMillis() - delta.startTime,
-      kv("master", delta.master));
+        "Last poll took {} ms (master: {})",
+        System.currentTimeMillis() - delta.startTime,
+        kv("master", delta.master));
 
     if (delta.items.isEmpty()) {
       return;
@@ -173,17 +175,9 @@ public class GitlabCiBuildMonitor
                   item.pipeline.getId(),
                   item.pipeline.getStatus());
               buildCache.setLastBuild(
-                  delta.master,
-                  item.cacheKey,
-                  item.pipeline.getId(),
-                  false,
-                  ttl);
+                  delta.master, item.cacheKey, item.pipeline.getId(), false, ttl);
               if (sendEvents) {
-                sendEvent(
-                    item.project,
-                    item.pipeline,
-                    gitlabCiService.getAddress(),
-                    delta.master);
+                sendEvent(item.project, item.pipeline, gitlabCiService.getAddress(), delta.master);
               }
             });
   }
@@ -208,8 +202,7 @@ public class GitlabCiBuildMonitor
     return (int) TimeUnit.DAYS.toSeconds(gitlabCiProperties.getCachedJobTTLDays());
   }
 
-  private void sendEvent(
-      Project project, Pipeline pipeline, String address, String master) {
+  private void sendEvent(Project project, Pipeline pipeline, String address, String master) {
     if (!echoService.isPresent()) {
       log.warn("Cannot send build notification: Echo is not enabled");
       registry.counter(missedNotificationId.withTag("monitor", getName())).increment();

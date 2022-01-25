@@ -36,10 +36,17 @@ public class Project {
     this.id = id;
   }
 
-  public void setBuildsAccessLevel(String buildsAccessLevel) { this.buildsAccessLevel = buildsAccessLevel; }
-  public String getBuildsAccessLevel() { return this.buildsAccessLevel; }
+  public void setBuildsAccessLevel(String buildsAccessLevel) {
+    this.buildsAccessLevel = buildsAccessLevel;
+  }
 
-  public String getPathWithNamespace() { return pathWithNamespace; }
+  public String getBuildsAccessLevel() {
+    return this.buildsAccessLevel;
+  }
+
+  public String getPathWithNamespace() {
+    return pathWithNamespace;
+  }
 
   public void setPathWithNamespace(String pathWithNamespace) {
     this.pathWithNamespace = pathWithNamespace;

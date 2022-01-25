@@ -26,6 +26,7 @@ import lombok.Setter;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Bridge {
   private Pipeline pipeline;
+
   @JsonProperty("downstream_pipeline")
   private Pipeline downstreamPipeline;
 }

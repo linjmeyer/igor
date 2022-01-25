@@ -27,8 +27,10 @@ import lombok.Setter;
 public class Artifact {
   @JsonProperty("file_type")
   private String fileType;
+
   private long Size;
   private String filename;
+
   @JsonProperty("file_format")
   private String fileFormat;
 }
