@@ -30,10 +30,13 @@ public interface GitlabCiClient {
 
   @GET("/api/v4/projects")
   List<Project> getProjects(
-      @Query("membership") boolean limitByMembership,
-      @Query("owned") boolean limitByOwnership,
-      @Query("page") int page,
-      @Query("per_page") int pageLimit);
+    @Query("membership") boolean limitByMembership,
+    @Query("owned") boolean limitByOwnership,
+    @Query("page") int page,
+    @Query("per_page") int pageLimit);
+
+  @GET("/api/v4/projects/{projectId}")
+  Project getProject(@Path("projectId") String projectId);
 
   @GET("/api/v4/projects/{projectId}/pipelines")
   List<Pipeline> getPipelineSummaries(

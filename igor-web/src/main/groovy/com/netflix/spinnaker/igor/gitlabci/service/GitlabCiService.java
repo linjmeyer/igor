@@ -33,7 +33,6 @@ import com.netflix.spinnaker.kork.exceptions.SpinnakerException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import retrofit.RetrofitError;
-import retrofit.client.Response;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,7 +76,7 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   @Override
   public BuildServiceProvider getBuildServiceProvider() {
-    return BuildServiceProvider.GITLAB_CI;
+    return BuildServiceProvider.GITLABCI;
   }
 
   @Override
@@ -87,11 +86,16 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   @Override
   public GenericBuild getGenericBuild(String projectId, int pipelineId) {
+    Project project = client.getProject(projectId);
+    if (project == null) {
+      log.error("Could not find Gitlab CI Project with projectId={}", projectId);
+      return null;
+    }
     Pipeline pipeline = client.getPipeline(projectId, pipelineId);
     if (pipeline == null) {
       return null;
     }
-    return pipeline.toGenericBuild();
+    return GitlabCiPipelineUtils.genericBuild(pipeline, this.address, project.getPathWithNamespace());
   }
 
   @Override

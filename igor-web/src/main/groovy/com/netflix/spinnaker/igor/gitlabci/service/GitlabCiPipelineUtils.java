@@ -20,14 +20,16 @@ import com.netflix.spinnaker.igor.gitlabci.client.model.Pipeline;
 
 public class GitlabCiPipelineUtils {
 
-  public static GenericBuild genericBuild(Pipeline pipeline, String repoSlug, String baseUrl) {
+  public static GenericBuild genericBuild(Pipeline pipeline, String baseUrl, String repoPathWithNamespace) {
+    String friendlyName = String.format("%s (%s)", pipeline.getRef(), pipeline.getId());
     GenericBuild genericBuild = new GenericBuild();
     genericBuild.setBuilding(GitlabCiResultConverter.running(pipeline.getStatus()));
     genericBuild.setNumber(pipeline.getId());
     genericBuild.setResult(GitlabCiResultConverter.getResultFromGitlabCiState(pipeline.getStatus()));
-    genericBuild.setName(repoSlug);
-    genericBuild.setUrl(url(repoSlug, baseUrl, pipeline.getId()));
-
+    genericBuild.setName(friendlyName);
+    genericBuild.setUrl(url(repoPathWithNamespace, baseUrl, pipeline.getId()));
+    genericBuild.setFullDisplayName(friendlyName);
+    genericBuild.setId(String.valueOf(pipeline.getId()));
     return genericBuild;
   }
 

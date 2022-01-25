@@ -93,7 +93,7 @@ public class GitlabCiBuildMonitor
 
   @Override
   public void poll(boolean sendEvents) {
-    buildServices.getServiceNames(BuildServiceProvider.GITLAB_CI).stream()
+    buildServices.getServiceNames(BuildServiceProvider.GITLABCI).stream()
         .map(it -> new PollContext(it, !sendEvents))
         .forEach(this::pollSingle);
   }
@@ -179,11 +179,10 @@ public class GitlabCiBuildMonitor
                   false,
                   ttl);
               if (sendEvents) {
-                sendEventForPipeline(
+                sendEvent(
                     item.project,
                     item.pipeline,
                     gitlabCiService.getAddress(),
-                    item.cacheKey,
                     delta.master);
               }
             });
@@ -209,35 +208,24 @@ public class GitlabCiBuildMonitor
     return (int) TimeUnit.DAYS.toSeconds(gitlabCiProperties.getCachedJobTTLDays());
   }
 
-  private void sendEventForPipeline(
-      Project project,
-      final Pipeline pipeline,
-      String address,
-      final String branchedSlug,
-      String master) {
-    if (echoService.isPresent()) {
-      sendEvent(pipeline.getRef(), project, pipeline, address, master);
-      sendEvent(branchedSlug, project, pipeline, address, master);
-    }
-  }
-
   private void sendEvent(
-      String slug, Project project, Pipeline pipeline, String address, String master) {
+      Project project, Pipeline pipeline, String address, String master) {
     if (!echoService.isPresent()) {
       log.warn("Cannot send build notification: Echo is not enabled");
       registry.counter(missedNotificationId.withTag("monitor", getName())).increment();
       return;
     }
 
-    log.info("pushing event for {}:{}:{}", kv("master", master), slug, pipeline.getId());
+    String projectId = String.valueOf(project.getId());
+    log.info("pushing event for {}:{}:{}", kv("master", master), projectId, pipeline.getId());
     GenericProject genericProject =
         new GenericProject(
-            slug,
-            GitlabCiPipelineUtils.genericBuild(pipeline, project.getPathWithNamespace(), address));
+            projectId,
+            GitlabCiPipelineUtils.genericBuild(pipeline, address, project.getPathWithNamespace()));
 
     GenericBuildContent content = new GenericBuildContent();
     content.setMaster(master);
-    content.setType("gitlabci");
+    content.setType(BuildServiceProvider.GITLABCI.name());
     content.setProject(genericProject);
 
     GenericBuildEvent event = new GenericBuildEvent();
