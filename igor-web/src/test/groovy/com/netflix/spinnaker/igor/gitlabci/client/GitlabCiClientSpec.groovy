@@ -46,7 +46,7 @@ class GitlabCiClientSpec extends Specification {
         setResponse GitlabApiCannedResponses.PROJECT_LIST
 
         when:
-        List<Project> projects = client.getProjects(false, true, 1)
+        List<Project> projects = client.getProjects(false, false, 1, 100)
 
         then:
         projects.size() == 2
@@ -63,7 +63,7 @@ class GitlabCiClientSpec extends Specification {
         setResponse GitlabApiCannedResponses.PIPELINE_SUMMARIES
 
         when:
-        List<Pipeline> pipelineSummaries = client.getPipelineSummaries(3057147, 3)
+        List<Pipeline> pipelineSummaries = client.getPipelineSummaries("500", 100)
 
         then:
         pipelineSummaries.size() == 3
@@ -78,17 +78,15 @@ class GitlabCiClientSpec extends Specification {
         setResponse GitlabApiCannedResponses.PIPELINE
 
         when:
-        Pipeline pipeline = client.getPipeline(3057147, 14081120)
+        Pipeline pipeline = client.getPipeline("3057147", 14081120)
 
         then:
         pipeline.id == 14081120
         pipeline.ref == 'master'
         pipeline.sha == 'ab0e9eb3a105082a97d5774cceb8c1b6c4d46136'
-        pipeline.duration == 18
 
-        pipeline.finishedAt == new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").parse('2017-11-17T21:24:54.880+0000')
+        pipeline.createdAt == new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ").parse('2017-11-17T21:24:14.264+0000')
         pipeline.status == PipelineStatus.success
-        !pipeline.tag
     }
 
     private void setResponse(String body) {

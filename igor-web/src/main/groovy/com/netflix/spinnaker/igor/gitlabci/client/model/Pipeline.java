@@ -73,15 +73,4 @@ public class Pipeline {
   public void setStatus(PipelineStatus status) {
     this.status = status;
   }
-
-  public GenericBuild toGenericBuild() {
-    // ToDo: Add additional properties
-    GenericBuild genericBuild = new GenericBuild();
-    genericBuild.setBuilding(GitlabCiResultConverter.running(this.getStatus()));
-    genericBuild.setNumber(this.getId());
-    genericBuild.setResult(GitlabCiResultConverter.getResultFromGitlabCiState(this.getStatus()));
-    genericBuild.setName(String.valueOf(this.getId()));
-    genericBuild.setId(String.valueOf(this.getId()));
-    return genericBuild;
-  }
 }
