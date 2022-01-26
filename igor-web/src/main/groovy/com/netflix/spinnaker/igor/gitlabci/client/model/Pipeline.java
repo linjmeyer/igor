@@ -18,8 +18,6 @@ package com.netflix.spinnaker.igor.gitlabci.client.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.netflix.spinnaker.igor.build.model.GenericBuild;
-import com.netflix.spinnaker.igor.gitlabci.service.GitlabCiResultConverter;
 import java.util.Date;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
