@@ -16,6 +16,7 @@
  */
 package com.netflix.spinnaker.igor.gitlabci.service;
 
+import static java.lang.Thread.sleep;
 import static net.logstash.logback.argument.StructuredArguments.kv;
 
 import com.netflix.spinnaker.fiat.model.resources.Permissions;
@@ -37,10 +38,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import retrofit.RetrofitError;
+import retrofit.client.Header;
 
 @Slf4j
 public class GitlabCiService implements BuildOperations, BuildProperties {
@@ -78,12 +81,12 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   @Override
   public GenericBuild getGenericBuild(String projectId, int pipelineId) {
-    Project project = client.getProject(projectId);
+    Project project = retryWithRateLimitingBackoff(() -> client.getProject(projectId));
     if (project == null) {
       log.error("Could not find Gitlab CI Project with projectId={}", projectId);
       return null;
     }
-    Pipeline pipeline = client.getPipeline(projectId, pipelineId);
+    Pipeline pipeline = retryWithRateLimitingBackoff(() -> client.getPipeline(projectId, pipelineId));
     if (pipeline == null) {
       return null;
     }
@@ -93,7 +96,7 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   @Override
   public List<Pipeline> getBuilds(String job) {
-    return this.client.getPipelineSummaries(job, this.hostConfig.getDefaultHttpPageLength());
+    return retryWithRateLimitingBackoff(() -> this.client.getPipelineSummaries(job, this.hostConfig.getDefaultHttpPageLength()));
   }
 
   @Override
@@ -131,8 +134,8 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   // Gets a pipeline's jobs along with any child pipeline jobs (bridges)
   private List<Job> getJobsWithBridges(String projectId, Integer pipelineId) {
-    List<Job> jobs = this.client.getJobs(projectId, pipelineId);
-    List<Bridge> bridges = this.client.getBridges(projectId, pipelineId);
+    List<Job> jobs = retryWithRateLimitingBackoff(() -> this.client.getJobs(projectId, pipelineId));
+    List<Bridge> bridges = retryWithRateLimitingBackoff(() -> this.client.getBridges(projectId, pipelineId));
     bridges.parallelStream()
         .filter(
             bridge -> {
@@ -144,64 +147,94 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
             })
         .forEach(
             bridge -> {
-              jobs.addAll(this.client.getJobs(projectId, bridge.getDownstreamPipeline().getId()));
+              List<Job> allJobsForBridge = retryWithRateLimitingBackoff(() -> this.client.getJobs(projectId, bridge.getDownstreamPipeline().getId()));
+                jobs.addAll(allJobsForBridge);
             });
     return jobs;
   }
 
+  private <T> T retryWithRateLimitingBackoff(Supplier<T> fn) {
+    return retrySupport.retry(
+      () -> {
+        try {
+          return fn.get();
+        } catch (RetrofitError retrofitError) {
+          // default retry on network issue
+          if (retrofitError.getKind() == RetrofitError.Kind.NETWORK) {
+            throw retrofitError;
+          }
+          if (retrofitError.getKind() == RetrofitError.Kind.HTTP) {
+            int status = retrofitError.getResponse().getStatus();
+            // default retry for 404s and 500s (Gitlab API may return 404s on newly created objects)
+            if (status == 404 || status >= 500) {
+              throw retrofitError;
+            }
+            // 429 (rate limit) we can check for a header that tells us how long to wait before proceeding
+            // https://docs.gitlab.com/ee/user/admin_area/settings/user_and_ip_rate_limits.html#response-headers
+            if (status == 429) {
+              try {
+                var retryAfterSeconds = Long.parseLong(retrofitError.getResponse()
+                  .getHeaders()
+                  .stream()
+                  .filter(h -> h.getName().equalsIgnoreCase("Retry-After"))
+                  .map(Header::getValue)
+                  .findFirst()
+                  .orElse(""));
+                log.warn("Waiting {} seconds using GitlabCI Retry-After header due to rate limiting", retryAfterSeconds);
+                try {
+                  Thread.sleep(retryAfterSeconds * 1000);
+                } catch (InterruptedException ignored) {
+                }
+                throw retrofitError; // Rethrow after 429 response header wait to conduct another retry
+              } catch (NumberFormatException headerParseException) {
+                log.error("Failed to parse Retry-After header during GitlabCI rate limiting", headerParseException);
+                throw retrofitError;
+              }
+            }
+          }
+
+          // Any other exceptions do not retry
+          SpinnakerException ex = new SpinnakerException(retrofitError);
+          ex.setRetryable(false);
+          throw ex;
+        }
+      },
+      this.hostConfig.getHttpRetryMaxAttempts(),
+      Duration.ofSeconds(this.hostConfig.getHttpRetryWaitSeconds()),
+      this.hostConfig.getHttpRetryExponentialBackoff()
+    );
+  }
+
   private Map<String, Object> getPropertyFileFromLog(String projectId, Integer pipelineId) {
     Map<String, Object> properties = new HashMap<>();
-    return retrySupport.retry(
-        () -> {
-          try {
-            Pipeline pipeline = this.client.getPipeline(projectId, pipelineId);
-            PipelineStatus status = pipeline.getStatus();
-            if (status != PipelineStatus.running) {
-              log.error(
-                  "Unable to get GitLab build properties, pipeline '{}' in project '{}' has status {}",
-                  kv("pipeline", pipelineId),
-                  kv("project", projectId),
-                  kv("status", status));
-            }
-            // Pipelines logs are stored within each stage (job), loop all jobs of this pipeline
-            // and any jobs of child pipeline's to parse all logs for the pipeline
-            List<Job> jobs = getJobsWithBridges(projectId, pipelineId);
-            for (Job job : jobs) {
-              InputStream logStream = this.client.getJobLog(projectId, job.getId()).getBody().in();
-              String log = new String(logStream.readAllBytes(), StandardCharsets.UTF_8);
-              Map<String, Object> jobProperties = PropertyParser.extractPropertiesFromLog(log);
-              properties.putAll(jobProperties);
-            }
-
-            return properties;
-
-          } catch (RetrofitError e) {
-            // retry on network issue, 404 and 5XX
-            if (e.getKind() == RetrofitError.Kind.NETWORK
-                || (e.getKind() == RetrofitError.Kind.HTTP
-                    && (e.getResponse().getStatus() == 404
-                        || e.getResponse().getStatus() >= 500))) {
-              throw e;
-            }
-            SpinnakerException ex = new SpinnakerException(e);
-            ex.setRetryable(false);
-            throw ex;
-          } catch (IOException e) {
-            log.error("Error while parsing GitLab CI log to build properties", e);
-            return properties;
+        try {
+          Pipeline pipeline = retryWithRateLimitingBackoff(() -> this.client.getPipeline(projectId, pipelineId));
+          PipelineStatus status = pipeline.getStatus();
+          if (status != PipelineStatus.running) {
+            log.error(
+                "Unable to get GitLab build properties, pipeline '{}' in project '{}' has status {}",
+                kv("pipeline", pipelineId),
+                kv("project", projectId),
+                kv("status", status));
           }
-        },
-        this.hostConfig.getHttpRetryMaxAttempts(),
-        Duration.ofSeconds(this.hostConfig.getHttpRetryWaitSeconds()),
-        this.hostConfig.getHttpRetryExponentialBackoff());
+          // Pipelines logs are stored within each stage (job), loop all jobs of this pipeline
+          // and any jobs of child pipeline's to parse all logs for the pipeline
+          List<Job> jobs = getJobsWithBridges(projectId, pipelineId);
+          for (Job job : jobs) {
+            InputStream logStream = retryWithRateLimitingBackoff(() -> this.client.getJobLog(projectId, job.getId())).getBody().in();
+            String log = new String(logStream.readAllBytes(), StandardCharsets.UTF_8);
+            Map<String, Object> jobProperties = PropertyParser.extractPropertiesFromLog(log);
+            properties.putAll(jobProperties);
+          }
+          return properties;
+        } catch (IOException e) {
+          log.error("Error while parsing GitLab CI log to build properties", e);
+          return properties;
+        }
   }
 
   public List<Pipeline> getPipelines(final Project project, int pageSize) {
-    return client.getPipelineSummaries(String.valueOf(project.getId()), pageSize);
-  }
-
-  public List<Pipeline> getPipelines(final Project project) {
-    return getPipelines(project, this.hostConfig.getDefaultHttpPageLength());
+    return retryWithRateLimitingBackoff(() -> client.getPipelineSummaries(String.valueOf(project.getId()), pageSize));
   }
 
   public String getAddress() {
@@ -209,12 +242,12 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
   }
 
   private List<Project> getProjectsRec(List<Project> projects, int page) {
-    List<Project> slice =
-        client.getProjects(
-            hostConfig.getLimitByMembership(),
-            hostConfig.getLimitByOwnership(),
-            page,
-            hostConfig.getDefaultHttpPageLength());
+    List<Project> slice = retryWithRateLimitingBackoff(() ->
+      client.getProjects(
+        hostConfig.getLimitByMembership(),
+        hostConfig.getLimitByOwnership(),
+        page,
+        hostConfig.getDefaultHttpPageLength()));
     if (slice.isEmpty()) {
       return projects;
     } else {

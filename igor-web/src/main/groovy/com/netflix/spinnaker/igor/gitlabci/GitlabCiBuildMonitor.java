@@ -116,14 +116,15 @@ public class GitlabCiBuildMonitor
         kv("master", master));
 
     List<BuildDelta> delta = new ArrayList<>();
-    projects.parallelStream()
+
+    projects
         .forEach(
             project -> {
               // Gitlab Pipeline API is broken up by project, check for new pipelines for each
               // project individually
               List<Pipeline> pipelines =
-                  filterOldPipelines(
-                      gitlabCiService.getPipelines(project, MAX_NUMBER_OF_PIPELINES));
+                filterOldPipelines(
+                  gitlabCiService.getPipelines(project, MAX_NUMBER_OF_PIPELINES));
               for (Pipeline pipeline : pipelines) {
                 if (pipeline.getStatus() != PipelineStatus.success) {
                   // Ignore pipelines that are running, pending, failed, etc.
@@ -136,18 +137,16 @@ public class GitlabCiBuildMonitor
                   updatedBuilds.incrementAndGet();
                   boolean isPipelineRunning = GitlabCiResultConverter.running(pipeline.getStatus());
                   delta.add(
-                      new BuildDelta(pipelineIdCacheKey, project, pipeline, isPipelineRunning));
+                    new BuildDelta(pipelineIdCacheKey, project, pipeline, isPipelineRunning));
                 }
               }
             });
 
-    if (!delta.isEmpty()) {
-      log.info(
-          "Found {} new builds in {} milliseconds (master: {})",
-          updatedBuilds.get(),
-          System.currentTimeMillis() - startTime,
-          kv("master", master));
-    }
+    log.info(
+        "Found {} new builds in {} milliseconds (master: {})",
+        updatedBuilds.get(),
+        System.currentTimeMillis() - startTime,
+        kv("master", master));
 
     return new BuildPollingDelta(delta, master, startTime);
   }

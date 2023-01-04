@@ -51,7 +51,8 @@ public class GitlabCiConfig {
       BuildServices buildServices,
       final IgorConfigurationProperties igorConfigurationProperties,
       GitlabCiProperties gitlabCiProperties,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      RestAdapter.LogLevel retrofitLogLevel) {
     log.info("creating gitlabCiMasters");
     Map<String, GitlabCiService> gitlabCiMasters =
         gitlabCiProperties.getMasters().stream()
@@ -61,7 +62,8 @@ public class GitlabCiConfig {
                         igorConfigurationProperties,
                         gitlabCiHost.getName(),
                         gitlabCiHost,
-                        objectMapper))
+                        objectMapper,
+                        retrofitLogLevel))
             .collect(Collectors.toMap(GitlabCiService::getName, Function.identity()));
     buildServices.addServices(gitlabCiMasters);
     return gitlabCiMasters;
@@ -71,20 +73,22 @@ public class GitlabCiConfig {
       IgorConfigurationProperties igorConfigurationProperties,
       String name,
       GitlabCiProperties.GitlabCiHost host,
-      ObjectMapper objectMapper) {
+      ObjectMapper objectMapper,
+      RestAdapter.LogLevel retrofitLogLevel) {
     return new GitlabCiService(
         gitlabCiClient(
             host.getAddress(),
             host.getPrivateToken(),
             igorConfigurationProperties.getClient().getTimeout(),
-            objectMapper),
+            objectMapper,
+            retrofitLogLevel),
         name,
         host,
         host.getPermissions().build());
   }
 
   public static GitlabCiClient gitlabCiClient(
-      String address, String privateToken, int timeout, ObjectMapper objectMapper) {
+      String address, String privateToken, int timeout, ObjectMapper objectMapper, RestAdapter.LogLevel retrofitLogLevel) {
     OkHttpClient client = new OkHttpClient();
     client.setReadTimeout(timeout, TimeUnit.MILLISECONDS);
 
@@ -93,7 +97,7 @@ public class GitlabCiConfig {
         .setRequestInterceptor(new GitlabCiHeaders(privateToken))
         .setClient(new OkClient(client))
         .setLog(new Slf4jRetrofitLogger(GitlabCiClient.class))
-        .setLogLevel(RestAdapter.LogLevel.FULL)
+        .setLogLevel(retrofitLogLevel)
         .setConverter(new JacksonConverter(objectMapper))
         .build()
         .create(GitlabCiClient.class);

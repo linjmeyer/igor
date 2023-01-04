@@ -56,7 +56,7 @@ public class GitlabCiProperties implements BuildServerProperties<GitlabCiPropert
     private Integer itemUpperThreshold = 1000;
     private Integer httpRetryMaxAttempts = 5;
     private Integer httpRetryWaitSeconds = 2;
-    private Boolean httpRetryExponentialBackoff = false;
+    private Boolean httpRetryExponentialBackoff = true;
     private Permissions.Builder permissions = new Permissions.Builder();
 
     public String getName() {
