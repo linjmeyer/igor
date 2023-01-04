@@ -37,10 +37,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import retrofit.RetrofitError;
+import retrofit.client.Response;
 
 @Slf4j
 public class GitlabCiService implements BuildOperations, BuildProperties {
@@ -49,6 +52,7 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
   private final GitlabCiProperties.GitlabCiHost hostConfig;
   private final Permissions permissions;
   private final RetrySupport retrySupport = new RetrySupport();
+  private final Set<Integer> retryStatusCodes = Set.of(404, 429, 500);
 
   public GitlabCiService(
       GitlabCiClient client,
@@ -78,22 +82,22 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   @Override
   public GenericBuild getGenericBuild(String projectId, int pipelineId) {
-    Project project = client.getProject(projectId);
-    if (project == null) {
-      log.error("Could not find Gitlab CI Project with projectId={}", projectId);
-      return null;
-    }
-    Pipeline pipeline = client.getPipeline(projectId, pipelineId);
-    if (pipeline == null) {
-      return null;
-    }
-    return GitlabCiPipelineUtils.genericBuild(
+      Project project = httpCallWithRetry(() -> client.getProject(projectId));
+      if (project == null) {
+        log.error("Could not find Gitlab CI Project with projectId={}", projectId);
+        return null;
+      }
+      Pipeline pipeline = httpCallWithRetry(() -> client.getPipeline(projectId, pipelineId));
+      if (pipeline == null) {
+        return null;
+      }
+      return GitlabCiPipelineUtils.genericBuild(
         pipeline, this.hostConfig.getAddress(), project.getPathWithNamespace());
   }
 
   @Override
   public List<Pipeline> getBuilds(String job) {
-    return this.client.getPipelineSummaries(job, this.hostConfig.getDefaultHttpPageLength());
+    return httpCallWithRetry(() -> this.client.getPipelineSummaries(job, this.hostConfig.getDefaultHttpPageLength()));
   }
 
   @Override
@@ -131,73 +135,87 @@ public class GitlabCiService implements BuildOperations, BuildProperties {
 
   // Gets a pipeline's jobs along with any child pipeline jobs (bridges)
   private List<Job> getJobsWithBridges(String projectId, Integer pipelineId) {
-    List<Job> jobs = this.client.getJobs(projectId, pipelineId);
-    List<Bridge> bridges = this.client.getBridges(projectId, pipelineId);
+    List<Job> jobs = httpCallWithRetry(() -> this.client.getJobs(projectId, pipelineId));
+    List<Bridge> bridges = httpCallWithRetry(() -> this.client.getBridges(projectId, pipelineId));
     bridges.parallelStream()
-        .filter(
-            bridge -> {
-              // Filter out any child pipelines that failed or are still in-progress
-              Pipeline parent = bridge.getDownstreamPipeline();
-              return parent != null
-                  && GitlabCiResultConverter.getResultFromGitlabCiState(parent.getStatus())
-                      == Result.SUCCESS;
-            })
-        .forEach(
-            bridge -> {
-              jobs.addAll(this.client.getJobs(projectId, bridge.getDownstreamPipeline().getId()));
-            });
+      .filter(
+        bridge -> {
+          // Filter out any child pipelines that failed or are still in-progress
+          Pipeline parent = bridge.getDownstreamPipeline();
+          return parent != null
+            && GitlabCiResultConverter.getResultFromGitlabCiState(parent.getStatus())
+            == Result.SUCCESS;
+        })
+      .forEach(
+        bridge -> {
+          List<Job> allJobsIncludingChildren = httpCallWithRetry(() -> this.client.getJobs(projectId, bridge.getDownstreamPipeline().getId()));
+          jobs.addAll(allJobsIncludingChildren);
+        });
     return jobs;
+  }
+
+  // Wrapper for making Gitlab API/HTTP calls with retries based on passed in host settings
+  private <T> T httpCallWithRetry(Supplier<T> fn) {
+    return retrySupport.retry(
+      () -> {
+        try {
+            return fn.get();
+          } catch (RetrofitError e) {
+            // retry on network issue, 404, 429 and 5XX
+            if (e.getKind() == RetrofitError.Kind.NETWORK
+              || e.getKind() == RetrofitError.Kind.HTTP
+              || retryStatusCodes.contains(e.getResponse().getStatus())) {
+              log.debug("Backing off failed HTTP call to " + e.getUrl() + " due to error: " + e.getKind());
+              throw e;
+            }
+
+            // Any other status codes or RetrofitErrors do not retry
+            SpinnakerException ex = new SpinnakerException(e);
+            ex.setRetryable(false);
+            throw ex;
+          }
+      },
+      this.hostConfig.getHttpRetryMaxAttempts(),
+      Duration.ofSeconds(this.hostConfig.getHttpRetryWaitSeconds()),
+      this.hostConfig.getHttpRetryExponentialBackoff());
   }
 
   private Map<String, Object> getPropertyFileFromLog(String projectId, Integer pipelineId) {
     Map<String, Object> properties = new HashMap<>();
-    return retrySupport.retry(
-        () -> {
-          try {
-            Pipeline pipeline = this.client.getPipeline(projectId, pipelineId);
-            PipelineStatus status = pipeline.getStatus();
-            if (status != PipelineStatus.running) {
-              log.error(
-                  "Unable to get GitLab build properties, pipeline '{}' in project '{}' has status {}",
-                  kv("pipeline", pipelineId),
-                  kv("project", projectId),
-                  kv("status", status));
-            }
-            // Pipelines logs are stored within each stage (job), loop all jobs of this pipeline
-            // and any jobs of child pipeline's to parse all logs for the pipeline
-            List<Job> jobs = getJobsWithBridges(projectId, pipelineId);
-            for (Job job : jobs) {
-              InputStream logStream = this.client.getJobLog(projectId, job.getId()).getBody().in();
-              String log = new String(logStream.readAllBytes(), StandardCharsets.UTF_8);
-              Map<String, Object> jobProperties = PropertyParser.extractPropertiesFromLog(log);
-              properties.putAll(jobProperties);
-            }
-
-            return properties;
-
-          } catch (RetrofitError e) {
-            // retry on network issue, 404 and 5XX
-            if (e.getKind() == RetrofitError.Kind.NETWORK
-                || (e.getKind() == RetrofitError.Kind.HTTP
-                    && (e.getResponse().getStatus() == 404
-                        || e.getResponse().getStatus() >= 500))) {
-              throw e;
-            }
-            SpinnakerException ex = new SpinnakerException(e);
-            ex.setRetryable(false);
-            throw ex;
-          } catch (IOException e) {
-            log.error("Error while parsing GitLab CI log to build properties", e);
-            return properties;
+    return httpCallWithRetry(
+      () -> {
+        try {
+          Pipeline pipeline = this.client.getPipeline(projectId, pipelineId);
+          PipelineStatus status = pipeline.getStatus();
+          if (status != PipelineStatus.running) {
+            log.error(
+              "Unable to get GitLab build properties, pipeline '{}' in project '{}' has status {}",
+              kv("pipeline", pipelineId),
+              kv("project", projectId),
+              kv("status", status));
           }
-        },
-        this.hostConfig.getHttpRetryMaxAttempts(),
-        Duration.ofSeconds(this.hostConfig.getHttpRetryWaitSeconds()),
-        this.hostConfig.getHttpRetryExponentialBackoff());
+          // Pipelines logs are stored within each stage (job), loop all jobs of this pipeline
+          // and any jobs of child pipeline's to parse all logs for the pipeline
+          List<Job> jobs = getJobsWithBridges(projectId, pipelineId);
+          for (Job job : jobs) {
+            Response jobLog = httpCallWithRetry(() -> this.client.getJobLog(projectId, job.getId()));
+            InputStream logStream = jobLog.getBody().in();
+            String log = new String(logStream.readAllBytes(), StandardCharsets.UTF_8);
+            Map<String, Object> jobProperties = PropertyParser.extractPropertiesFromLog(log);
+            properties.putAll(jobProperties);
+          }
+
+          return properties;
+
+        } catch (IOException e) {
+          log.error("Error while parsing GitLab CI log to build properties", e);
+          return properties;
+        }
+      });
   }
 
   public List<Pipeline> getPipelines(final Project project, int pageSize) {
-    return client.getPipelineSummaries(String.valueOf(project.getId()), pageSize);
+    return httpCallWithRetry(() -> client.getPipelineSummaries(String.valueOf(project.getId()), pageSize));
   }
 
   public List<Pipeline> getPipelines(final Project project) {
